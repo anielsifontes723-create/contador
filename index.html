@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotizador Pro m² - Presupuestos a Medida</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fuente Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Estilos específicos para impresión */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #print-area, #print-area * {
+                visibility: visible;
+            }
+            #print-area {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+                background: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+        /* Animación suave para notificaciones */
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .toast-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased pb-16">
+
+    <!-- Barra de navegación superior -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 p-2 rounded-lg">
+                    <i data-lucide="ruler" class="w-6 h-6 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg sm:text-xl font-bold tracking-tight">Cotizador Pro <span class="text-blue-400">m²</span></h1>
+                        <span id="sync-badge" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                            <span id="sync-text">Sin conectar</span>
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Sincronizado en tiempo real en todos tus dispositivos</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="openFirebaseModal()" class="flex items-center space-x-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition border border-amber-500/30" title="Configurar credenciales Firebase">
+                    <i data-lucide="flame" class="w-4 h-4"></i>
+                    <span class="hidden md:inline">Firebase</span>
+                </button>
+                <button onclick="resetForm()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg text-sm font-medium transition border border-slate-700">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Nuevo</span>
+                </button>
+                <button onclick="openBusinessConfig()" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition border border-slate-700" title="Datos de mi negocio">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <button id="btn-logout" onclick="handleLogout()" class="hidden p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition border border-red-500/20" title="Cerrar sesión">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- PANTALLA DE INICIO DE SESIÓN / REGISTRO (Visible cuando no hay sesión iniciada) -->
+    <section id="auth-screen" class="max-w-md mx-auto px-4 mt-10">
+        <div class="bg-white rounded-2xl shadow-md border border-slate-200 p-6 sm:p-8 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto border border-blue-100">
+                    <i data-lucide="cloud-lightning" class="w-7 h-7"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900" id="auth-title">Iniciar Sesión</h2>
+                <p class="text-sm text-slate-500">Accede a tus presupuestos sincronizados en la nube desde cualquier dispositivo.</p>
+            </div>
+
+            <!-- Aviso si aún no se ha configurado Firebase -->
+            <div id="fb-missing-banner" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800 space-y-2">
+                <p class="font-semibold flex items-center gap-1.5">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                    Falta configurar tu proyecto Firebase
+                </p>
+                <p>Pega tus credenciales <code class="bg-amber-100 px-1 rounded">firebaseConfig</code> para activar la sincronización en tiempo real.</p>
+                <button type="button" onclick="openFirebaseModal()" class="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition">
+                    Pegar Credenciales Firebase
+                </button>
+            </div>
+
+            <form id="auth-form" onsubmit="event.preventDefault(); handleAuthSubmit();" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Correo electrónico</label>
+                    <input type="email" id="auth-email" required placeholder="tu@correo.com"
+                        class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
+                    <input type="password" id="auth-password" required minlength="6" placeholder="Mínimo 6 caracteres"
+                        class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button type="submit" id="auth-submit-btn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+                    <i data-lucide="log-in" class="w-4 h-4"></i>
+                    <span id="auth-submit-text">Entrar a mi cuenta</span>
+                </button>
+            </form>
+
+            <div class="text-center pt-2 border-t border-slate-100">
+                <button type="button" onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    ¿No tienes cuenta? Regístrate gratis aquí
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contenedor Principal (Visible cuando el usuario inicia sesión) -->
+    <main id="app-main" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- COLUMNA IZQUIERDA: Formulario de Cálculo (7 columnas en desktop) -->
+            <div class="lg:col-span-7 space-y-6">
+                
+                <!-- Tarjeta del Formulario -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="calculator" class="w-5 h-5 text-blue-600"></i>
+                            <h2 class="font-semibold text-slate-800" id="form-title">Nuevo Presupuesto</h2>
+                        </div>
+                        <span id="editing-badge" class="hidden bg-amber-100 text-amber-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-amber-200">
+                            Editando guardado
+                        </span>
+                    </div>
+
+                    <form id="quote-form" class="p-6 space-y-6" onsubmit="event.preventDefault(); saveQuote();">
+                        <input type="hidden" id="quote-id" value="">
+
+                        <!-- Sección 1: Datos del Cliente -->
+                        <div class="space-y-4">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <i data-lucide="user" class="w-3.5 h-3.5"></i> Datos del Cliente
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Nombre del Cliente *</label>
+                                    <input type="text" id="client-name" required placeholder="Ej. Carlos Mendoza"
+                                        class="w-full rounded-xl border-slate-300 border px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Teléfono / WhatsApp *</label>
+                                    <div class="relative">
+                                        <input type="tel" id="client-phone" required placeholder="Ej. +58 412 1234567"
+                                            class="w-full rounded-xl border-slate-300 border px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-slate-100">
+
+                        <!-- Sección 2: Detalles del Trabajo y Medidas -->
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                    <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> Medidas y Precio Base
+                                </h3>
+                                <!-- Selector de Unidad -->
+                                <div class="inline-flex rounded-lg bg-slate-100 p-1 border border-slate-200">
+                                    <button type="button" id="unit-cm" onclick="setUnit('cm')"
+                                        class="px-3 py-1 rounded-md text-xs font-semibold transition bg-white text-blue-600 shadow-sm">
+                                        Centímetros (cm)
+                                    </button>
+                                    <button type="button" id="unit-m" onclick="setUnit('m')"
+                                        class="px-3 py-1 rounded-md text-xs font-semibold transition text-slate-600 hover:text-slate-900">
+                                        Metros (m)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Descripción del trabajo o material *</label>
+                                <input type="text" id="work-desc" required placeholder="Ej. Espejo biselado 4mm, Ventana panorámica, Vinil..."
+                                    class="w-full rounded-xl border-slate-300 border px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Notas adicionales del trabajo (Opcional)</label>
+                                <input type="text" id="work-notes" placeholder="Ej. Canto pulido, entrega a domicilio, color bronce..."
+                                    class="w-full rounded-xl border-slate-300 border px-3.5 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                            </div>
+
+                            <!-- Grid de medidas y precio -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Ancho (<span class="unit-label">cm</span>)</label>
+                                    <input type="number" step="any" min="0" id="width" required placeholder="0" oninput="calculate()"
+                                        class="w-full rounded-xl border-slate-300 border px-3 py-2.5 text-base font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Alto (<span class="unit-label">cm</span>)</label>
+                                    <input type="number" step="any" min="0" id="height" required placeholder="0" oninput="calculate()"
+                                        class="w-full rounded-xl border-slate-300 border px-3 py-2.5 text-base font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Precio / m² (<span class="currency-label">$</span>)</label>
+                                    <input type="number" step="any" min="0" id="price-m2" required placeholder="0.00" oninput="calculate()"
+                                        class="w-full rounded-xl border-slate-300 border px-3 py-2.5 text-base font-semibold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Cantidad</label>
+                                    <input type="number" step="1" min="1" id="quantity" value="1" required oninput="calculate()"
+                                        class="w-full rounded-xl border-slate-300 border px-3 py-2.5 text-base font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sección 3: Extras, Descuentos e Impuestos (Acordeón o bloque limpio) -->
+                        <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80 space-y-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Ajustes Adicionales (Opcional)
+                            </h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Costo Extra (<span class="currency-label">$</span>)</label>
+                                    <input type="number" step="any" min="0" id="extra-cost" placeholder="0.00" oninput="calculate()"
+                                        class="w-full rounded-lg border-slate-300 border bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <input type="text" id="extra-desc" placeholder="Concepto (ej. Instalación)"
+                                        class="w-full mt-1.5 rounded-lg border-slate-200 border bg-white px-2.5 py-1 text-xs text-slate-600 focus:ring-1 focus:ring-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Descuento (%)</label>
+                                    <input type="number" step="any" min="0" max="100" id="discount-pct" placeholder="0" oninput="calculate()"
+                                        class="w-full rounded-lg border-slate-300 border bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-600 mb-1">Impuesto / IVA (%)</label>
+                                    <input type="number" step="any" min="0" max="100" id="tax-pct" placeholder="0" oninput="calculate()"
+                                        class="w-full rounded-lg border-slate-300 border bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL DE RESULTADOS EN TIEMPO REAL -->
+                        <div class="bg-slate-900 text-white rounded-2xl p-5 shadow-inner">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 pb-4 border-b border-slate-800">
+                                <div>
+                                    <span class="text-xs text-slate-400 block">Área Unitaria</span>
+                                    <span class="text-lg font-semibold text-slate-200"><span id="res-unit-area">0.00</span> m²</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs text-slate-400 block">Área Total (<span id="res-qty">1</span> und)</span>
+                                    <span class="text-lg font-bold text-blue-400"><span id="res-total-area">0.00</span> m²</span>
+                                </div>
+                                <div class="col-span-2 sm:col-span-1">
+                                    <span class="text-xs text-slate-400 block">Subtotal Base</span>
+                                    <span class="text-lg font-semibold text-slate-200"><span class="currency-label">$</span><span id="res-subtotal">0.00</span></span>
+                                </div>
+                            </div>
+
+                            <!-- Desglose fino si hay extras/descuentos/impuestos -->
+                            <div id="res-adjustments" class="py-2.5 text-xs text-slate-400 space-y-1 border-b border-slate-800 hidden">
+                                <div id="row-extra" class="flex justify-between hidden">
+                                    <span>Costo adicional <span id="lbl-extra-desc"></span>:</span>
+                                    <span class="text-slate-200">+<span class="currency-label">$</span><span id="res-extra">0.00</span></span>
+                                </div>
+                                <div id="row-discount" class="flex justify-between text-emerald-400 hidden">
+                                    <span>Descuento (<span id="lbl-disc-pct">0</span>%):</span>
+                                    <span>-<span class="currency-label">$</span><span id="res-discount">0.00</span></span>
+                                </div>
+                                <div id="row-tax" class="flex justify-between hidden">
+                                    <span>Impuesto (<span id="lbl-tax-pct">0</span>%):</span>
+                                    <span class="text-slate-200">+<span class="currency-label">$</span><span id="res-tax">0.00</span></span>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div>
+                                    <span class="text-xs uppercase tracking-wider text-slate-400 block">Total Presupuesto</span>
+                                    <span class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight"><span class="currency-label">$</span><span id="res-total">0.00</span></span>
+                                </div>
+                            </div>
+
+                            <!-- Desglose fino si hay extras/descuentos/impuestos -->
+                            <div id="res-adjustments" class="py-2.5 text-xs text-slate-400 space-y-1 border-b border-slate-800 hidden">
+                                <div id="row-extra" class="flex justify-between hidden">
+                                    <span>Costo adicional <span id="lbl-extra-desc"></span>:</span>
+                                    <span class="text-slate-200">+$<span id="res-extra">0.00</span></span>
+                                </div>
+                                <div id="row-discount" class="flex justify-between text-emerald-400 hidden">
+                                    <span>Descuento (<span id="lbl-disc-pct">0</span>%):</span>
+                                    <span>-$<span id="res-discount">0.00</span></span>
+                                </div>
+                                <div id="row-tax" class="flex justify-between hidden">
+                                    <span>Impuesto (<span id="lbl-tax-pct">0</span>%):</span>
+                                    <span class="text-slate-200">+$<span id="res-tax">0.00</span></span>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div>
+                                    <span class="text-xs uppercase tracking-wider text-slate-400 block">Total Presupuesto</span>
+                                    <span class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">$<span id="res-total">0.00</span></span>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-400 mb-1">Estado inicial</label>
+                                    <select id="quote-status" class="bg-slate-800 text-white text-sm rounded-xl px-3 py-2 border border-slate-700 outline-none focus:border-blue-500">
+                                        <option value="Pendiente">?? Pendiente</option>
+                                        <option value="Aprobado">?? Aprobado</option>
+                                        <option value="Pagado">?? Pagado</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botones de Acción del Formulario -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                            <button type="submit"
+                                class="sm:col-span-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition active:scale-[0.99]">
+                                <i data-lucide="save" class="w-5 h-5"></i>
+                                <span id="btn-save-text">Guardar</span>
+                            </button>
+                            <button type="button" onclick="sendCurrentWhatsApp()"
+                                class="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition active:scale-[0.99]">
+                                <i data-lucide="message-circle" class="w-5 h-5"></i>
+                                <span>WhatsApp</span>
+                            </button>
+                            <button type="button" onclick="preparePrintCurrent()"
+                                class="flex items-center justify-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-3 px-4 rounded-xl border border-slate-300 transition active:scale-[0.99]">
+                                <i data-lucide="printer" class="w-5 h-5"></i>
+                                <span>Imprimir / PDF</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: Historial y Gestión (5 columnas en desktop) -->
+            <div class="lg:col-span-5 space-y-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-full">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="folder-open" class="w-5 h-5 text-blue-600"></i>
+                            <h2 class="font-semibold text-slate-800">Presupuestos Guardados</h2>
+                        </div>
+                        <span id="quotes-count" class="bg-slate-100 text-slate-600 text-xs font-bold px-2.5 py-1 rounded-full">0</span>
+                    </div>
+
+                    <!-- Buscador y Filtro de Estado -->
+                    <div class="space-y-2.5 mb-4">
+                        <div class="relative">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+                            <input type="text" id="search-input" onkeyup="renderQuotes()" placeholder="Buscar por nombre, teléfono o trabajo..."
+                                class="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition">
+                        </div>
+                        <div class="flex gap-1.5 overflow-x-auto pb-1 text-xs">
+                            <button onclick="setFilterStatus('Todos')" id="filter-Todos" class="filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-800 text-white transition">Todos</button>
+                            <button onclick="setFilterStatus('Pendiente')" id="filter-Pendiente" class="filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Pendientes</button>
+                            <button onclick="setFilterStatus('Aprobado')" id="filter-Aprobado" class="filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Aprobados</button>
+                            <button onclick="setFilterStatus('Pagado')" id="filter-Pagado" class="filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Pagados</button>
+                        </div>
+                    </div>
+
+                    <!-- Lista de Presupuestos -->
+                    <div id="quotes-list" class="space-y-3 overflow-y-auto max-h-[650px] pr-1">
+                        <!-- Se llena dinámicamente con JS -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MODAL: Configuración de Datos del Negocio (Para el encabezado de impresión y WhatsApp) -->
+    <div id="business-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-lg text-slate-800">Datos de tu Negocio</h3>
+                <button onclick="closeBusinessConfig()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-500">Esta información aparecerá en el encabezado de tus presupuestos impresos y mensajes.</p>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Nombre de tu Empresa / Taller</label>
+                    <input type="text" id="biz-name" placeholder="Ej. Vidriería y Aluminios El Sol" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Teléfono de contacto</label>
+                        <input type="text" id="biz-phone" placeholder="Ej. +58 414 0000000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Símbolo de Moneda</label>
+                        <input type="text" id="biz-currency" placeholder="Ej. $, Bs., €" value="$" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-700 mb-1">Nota al pie (Validez, condiciones)</label>
+                    <input type="text" id="biz-note" placeholder="Ej. Presupuesto válido por 7 días. Requiere 50% de anticipo." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeBusinessConfig()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                <button onclick="saveBusinessConfig()" class="px-4 py-2 text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded-xl">Guardar en Nube</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Configuración de Credenciales Firebase -->
+    <div id="firebase-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <i data-lucide="flame" class="w-5 h-5 text-amber-500"></i> Conectar Firebase en Tiempo Real
+                </h3>
+                <button onclick="closeFirebaseModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+                Pega aquí el objeto <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-mono">firebaseConfig</code> de tu consola de Firebase (puedes pegar el bloque completo tal cual te lo da Firebase).
+            </p>
+            <div>
+                <textarea id="fb-config-input" rows="7" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "tu-proyecto.firebaseapp.com",
+  "projectId": "tu-proyecto",
+  "storageBucket": "tu-proyecto.appspot.com",
+  "messagingSenderId": "123456789",
+  "appId": "1:123456789:web:abcdef"
+}' class="w-full rounded-xl border border-slate-300 p-3 text-xs font-mono bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+            </div>
+            <div class="flex justify-between items-center pt-2">
+                <button type="button" onclick="clearSavedFirebaseConfig()" class="text-xs text-red-600 hover:underline">Borrar config guardada</button>
+                <div class="flex gap-2">
+                    <button onclick="closeFirebaseModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
+                    <button onclick="saveFirebaseConfig()" class="px-4 py-2 text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded-xl">Guardar y Conectar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIRMACIÓN DE ELIMINACIÓN (Sin usar confirm() nativo) -->
+    <div id="delete-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl text-center space-y-4">
+            <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                <i data-lucide="trash-2" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-lg text-slate-800">¿Eliminar presupuesto?</h3>
+                <p class="text-sm text-slate-500 mt-1">Esta acción no se puede deshacer. Se borrará del historial de este dispositivo.</p>
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button onclick="closeDeleteModal()" class="flex-1 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">Cancelar</button>
+                <button id="confirm-delete-btn" class="flex-1 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÁREA OCULTA PARA IMPRESIÓN / RECIBO LIMPIO -->
+    <div id="print-area" class="hidden">
+        <div class="max-w-2xl mx-auto border border-slate-300 p-8 rounded-lg">
+            <div class="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-6">
+                <div>
+                    <h1 id="print-biz-name" class="text-2xl font-bold text-slate-900">PRESUPUESTO DE SERVICIO</h1>
+                    <p id="print-biz-phone" class="text-sm text-slate-600 mt-1"></p>
+                </div>
+                <div class="text-right">
+                    <span class="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded uppercase">Cotización</span>
+                    <p id="print-date" class="text-sm text-slate-600 mt-2"></p>
+                    <p id="print-status" class="text-xs font-semibold text-slate-500 mt-0.5"></p>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-lg mb-6 border border-slate-200">
+                <p class="text-xs uppercase font-bold text-slate-400 mb-1">Preparado para:</p>
+                <p id="print-client-name" class="text-lg font-bold text-slate-800"></p>
+                <p id="print-client-phone" class="text-sm text-slate-600"></p>
+            </div>
+
+            <table class="w-full text-left border-collapse mb-6">
+                <thead>
+                    <tr class="border-b-2 border-slate-300 text-xs uppercase text-slate-500">
+                        <th class="py-2">Descripción</th>
+                        <th class="py-2 text-center">Medidas</th>
+                        <th class="py-2 text-center">Área Total</th>
+                        <th class="py-2 text-right">Precio/m²</th>
+                        <th class="py-2 text-right">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 text-sm">
+                    <tr>
+                        <td class="py-3 font-medium text-slate-800">
+                            <span id="print-desc"></span>
+                            <span id="print-notes" class="block text-xs text-slate-500 italic"></span>
+                            <span id="print-qty" class="block text-xs text-slate-500"></span>
+                        </td>
+                        <td id="print-dims" class="py-3 text-center text-slate-600"></td>
+                        <td id="print-area-cell" class="py-3 text-center font-semibold text-slate-800"></td>
+                        <td id="print-price-m2" class="py-3 text-right text-slate-600"></td>
+                        <td id="print-subtotal" class="py-3 text-right font-semibold text-slate-800"></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="flex justify-end">
+                <div class="w-64 space-y-2 text-sm">
+                    <div id="print-extra-row" class="flex justify-between text-slate-600 hidden">
+                        <span id="print-extra-label">Extra:</span>
+                        <span id="print-extra-val"></span>
+                    </div>
+                    <div id="print-disc-row" class="flex justify-between text-emerald-700 hidden">
+                        <span id="print-disc-label">Descuento:</span>
+                        <span id="print-disc-val"></span>
+                    </div>
+                    <div id="print-tax-row" class="flex justify-between text-slate-600 hidden">
+                        <span id="print-tax-label">Impuesto:</span>
+                        <span id="print-tax-val"></span>
+                    </div>
+                    <div class="flex justify-between text-lg font-bold text-slate-900 border-t-2 border-slate-800 pt-2">
+                        <span>TOTAL:</span>
+                        <span id="print-total"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-10 pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
+                <p id="print-footer-note">Gracias por su preferencia.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor de Notificaciones Toast -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <!-- SDK de Firebase (v11 Modular) -->
+    <script type="module">
+        import { initializeApp, getApps, deleteApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth,
+            onAuthStateChanged,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            collection,
+            doc,
+            addDoc,
+            setDoc,
+            updateDoc,
+            deleteDoc,
+            onSnapshot,
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // CONFIGURACIÓN DE FIREBASE:
+        // Puedes pegar tus credenciales directamente aquí abajo o usar el botón
+        // "Firebase" dentro de la aplicación web.
+        // =========================================================================
+        const DEFAULT_FIREBASE_CONFIG = {
+            apiKey:"AIzaSyAOah96qtH0nLDkLvwLx4HWG7SXDEGQprU",
+            authDomain: "contador-40068.firebaseapp.com",
+            projectId: "contador-40068",
+            storageBucket: "contador-40068.firebasestorage.app",
+            messagingSenderId: "55450357927",
+            appId: "1:55450357927:web:cda092fd07d2f559efcb82"
+        };
+
+        // Inicializar iconos Lucide
+        lucide.createIcons();
+
+        // Estado global de la aplicación
+        let currentUnit = 'cm';
+        let currentFilter = 'Todos';
+        let isRegisterMode = false;
+        let quotes = [];
+        let businessConfig = {
+            name: 'Presupuesto Personalizado',
+            phone: '',
+            currency: '$',
+            note: 'Precios sujetos a cambio sin previo aviso. Validez: 7 días.'
+        };
+        let quoteToDeleteId = null;
+
+        // Variables de Firebase
+        let fbApp = null;
+        let auth = null;
+        let db = null;
+        let currentUser = null;
+        let unsubscribeQuotes = null;
+        let unsubscribeBiz = null;
+
+        // Obtener configuración de Firebase (prioriza la pegada en el modal)
+        function getActiveFirebaseConfig() {
+            const saved = localStorage.getItem('cotizador_pro_fb_config');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && parsed.apiKey && parsed.projectId) return parsed;
+                } catch (e) {}
+            }
+            if (DEFAULT_FIREBASE_CONFIG.apiKey && DEFAULT_FIREBASE_CONFIG.projectId) {
+                return DEFAULT_FIREBASE_CONFIG;
+            }
+            return null;
+        }
+
+        // Actualizar indicador visual de sincronización
+        function setSyncStatus(state, text) {
+            const badge = document.getElementById('sync-badge');
+            const dot = document.getElementById('sync-dot');
+            const label = document.getElementById('sync-text');
+            if (!badge) return;
+
+            badge.classList.remove('hidden');
+            badge.classList.add('inline-flex');
+            label.textContent = text;
+
+            if (state === 'online') {
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30';
+            } else if (state === 'syncing') {
+                dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30';
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400 border border-slate-700';
+            }
+        }
+
+        // Inicializar conexión con Firebase
+        async function initFirebase() {
+            const config = getActiveFirebaseConfig();
+            const missingBanner = document.getElementById('fb-missing-banner');
+
+            if (!config) {
+                missingBanner.classList.remove('hidden');
+                setSyncStatus('offline', 'Falta configurar Firebase');
+                return;
+            }
+
+            missingBanner.classList.add('hidden');
+            setSyncStatus('syncing', 'Conectando...');
+
+            try {
+                if (getApps().length > 0) {
+                    await deleteApp(getApps()[0]);
+                }
+                fbApp = initializeApp(config);
+                auth = getAuth(fbApp);
+                db = getFirestore(fbApp);
+
+                onAuthStateChanged(auth, (user) => {
+                    currentUser = user;
+                    if (user) {
+                        document.getElementById('auth-screen').classList.add('hidden');
+                        document.getElementById('app-main').classList.remove('hidden');
+                        document.getElementById('btn-logout').classList.remove('hidden');
+                        startRealtimeListeners(user.uid);
+                    } else {
+                        stopRealtimeListeners();
+                        document.getElementById('auth-screen').classList.remove('hidden');
+                        document.getElementById('app-main').classList.add('hidden');
+                        document.getElementById('btn-logout').classList.add('hidden');
+                        setSyncStatus('offline', 'Sesión cerrada');
+                    }
+                });
+            } catch (error) {
+                console.error('Error iniciando Firebase:', error);
+                setSyncStatus('offline', 'Error de conexión');
+                showToast('Error en las credenciales de Firebase: ' + error.message, 'error');
+            }
+        }
+
+        // Escuchas en tiempo real de Firestore (Presupuestos + Configuración del Negocio)
+        function startRealtimeListeners(uid) {
+            stopRealtimeListeners();
+            setSyncStatus('syncing', 'Sincronizando...');
+
+            // 1. Escuchar presupuestos del usuario: users/{uid}/presupuestos
+            const quotesRef = collection(db, 'users', uid, 'presupuestos');
+            unsubscribeQuotes = onSnapshot(quotesRef, (snapshot) => {
+                quotes = snapshot.docs.map(docSnap => ({
+                    id: docSnap.id,
+                    ...docSnap.data()
+                }));
+                // Ordenar por fecha más reciente en memoria
+                quotes.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+                renderQuotes();
+                setSyncStatus('online', 'Sincronizado en tiempo real');
+            }, (error) => {
+                console.error('Error en onSnapshot presupuestos:', error);
+                setSyncStatus('offline', 'Error de permisos/red');
+                showToast('Error al sincronizar: ' + error.message, 'error');
+            });
+
+            // 2. Escuchar configuración del negocio: users/{uid}/config/negocio
+            const bizRef = doc(db, 'users', uid, 'config', 'negocio');
+            unsubscribeBiz = onSnapshot(bizRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    businessConfig = { ...businessConfig, ...docSnap.data() };
+                    updateCurrencyLabels();
+                    renderQuotes();
+                }
+            }, (error) => {
+                console.error('Error leyendo config negocio:', error);
+            });
+        }
+
+        function stopRealtimeListeners() {
+            if (unsubscribeQuotes) {
+                unsubscribeQuotes();
+                unsubscribeQuotes = null;
+            }
+            if (unsubscribeBiz) {
+                unsubscribeBiz();
+                unsubscribeBiz = null;
+            }
+            quotes = [];
+        }
+
+        function updateCurrencyLabels() {
+            const sym = businessConfig.currency || '$';
+            document.querySelectorAll('.currency-label').forEach(el => el.textContent = sym);
+        }
+
+        // Alternar entre Iniciar Sesión y Crear Cuenta
+        window.toggleAuthMode = function() {
+            isRegisterMode = !isRegisterMode;
+            document.getElementById('auth-title').textContent = isRegisterMode ? 'Crear Cuenta Nueva' : 'Iniciar Sesión';
+            document.getElementById('auth-submit-text').textContent = isRegisterMode ? 'Registrarme y Entrar' : 'Entrar a mi cuenta';
+            document.getElementById('auth-toggle-btn').textContent = isRegisterMode
+                ? '¿Ya tienes cuenta? Inicia sesión aquí'
+                : '¿No tienes cuenta? Regístrate gratis aquí';
+        };
+
+        // Procesar Login o Registro
+        window.handleAuthSubmit = async function() {
+            if (!auth) {
+                showToast('Primero configura tus credenciales de Firebase', 'error');
+                openFirebaseModal();
+                return;
+            }
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const btn = document.getElementById('auth-submit-btn');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+
+            try {
+                if (isRegisterMode) {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                    showToast('¡Cuenta creada y sincronizada!');
+                } else {
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showToast('¡Bienvenido de nuevo!');
+                }
+            } catch (error) {
+                let msg = error.message;
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') msg = 'Correo o contraseña incorrectos.';
+                if (error.code === 'auth/email-already-in-use') msg = 'Este correo ya está registrado.';
+                if (error.code === 'auth/weak-password') msg = 'La contraseña debe tener al menos 6 caracteres.';
+                showToast(msg, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        };
+
+        window.handleLogout = async function() {
+            if (!auth) return;
+            await signOut(auth);
+            resetForm();
+            showToast('Sesión cerrada');
+        };
+
+        // Modal de Configuración de Firebase (permite pegar objeto JS o JSON)
+        window.openFirebaseModal = function() {
+            const saved = localStorage.getItem('cotizador_pro_fb_config');
+            if (saved) {
+                document.getElementById('fb-config-input').value = JSON.stringify(JSON.parse(saved), null, 2);
+            }
+            document.getElementById('firebase-modal').classList.remove('hidden');
+        };
+
+        window.closeFirebaseModal = function() {
+            document.getElementById('firebase-modal').classList.add('hidden');
+        };
+
+        window.saveFirebaseConfig = function() {
+            const raw = document.getElementById('fb-config-input').value.trim();
+            if (!raw) {
+                showToast('Pega el objeto de configuración de Firebase', 'error');
+                return;
+            }
+            try {
+                // Extraer bloque entre llaves { ... } por si pegan "const firebaseConfig = { ... };"
+                const start = raw.indexOf('{');
+                const end = raw.lastIndexOf('}');
+                if (start === -1 || end === -1) throw new Error('Formato inválido');
+                const objStr = raw.slice(start, end + 1);
+                // Parseo seguro soportando claves sin comillas estilo JS
+                const parsed = Function('"use strict";return (' + objStr + ')')();
+
+                if (!parsed.apiKey || !parsed.projectId) {
+                    throw new Error('Faltan apiKey o projectId');
+                }
+
+                localStorage.setItem('cotizador_pro_fb_config', JSON.stringify(parsed));
+                closeFirebaseModal();
+                showToast('Credenciales guardadas. Conectando...');
+                initFirebase();
+            } catch (err) {
+                showToast('No se pudo leer el firebaseConfig. Verifica el formato.', 'error');
+            }
+        };
+
+        window.clearSavedFirebaseConfig = function() {
+            localStorage.removeItem('cotizador_pro_fb_config');
+            document.getElementById('fb-config-input').value = '';
+            closeFirebaseModal();
+            initFirebase();
+            showToast('Configuración local eliminada');
+        };
+
+        // Cargar datos iniciales al abrir
+        window.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            calculate();
+        });
+
+        // Cambiar unidad entre cm y m
+        window.setUnit = function(unit) {
+            currentUnit = unit;
+            const btnCm = document.getElementById('unit-cm');
+            const btnM = document.getElementById('unit-m');
+            const labels = document.querySelectorAll('.unit-label');
+
+            if (unit === 'cm') {
+                btnCm.className = 'px-3 py-1 rounded-md text-xs font-semibold transition bg-white text-blue-600 shadow-sm';
+                btnM.className = 'px-3 py-1 rounded-md text-xs font-semibold transition text-slate-600 hover:text-slate-900';
+            } else {
+                btnM.className = 'px-3 py-1 rounded-md text-xs font-semibold transition bg-white text-blue-600 shadow-sm';
+                btnCm.className = 'px-3 py-1 rounded-md text-xs font-semibold transition text-slate-600 hover:text-slate-900';
+            }
+
+            labels.forEach(el => el.textContent = unit);
+            calculate();
+        };
+
+        // Función principal de cálculo en tiempo real
+        window.calculate = function() {
+            const w = parseFloat(document.getElementById('width').value) || 0;
+            const h = parseFloat(document.getElementById('height').value) || 0;
+            const priceM2 = parseFloat(document.getElementById('price-m2').value) || 0;
+            const qty = parseInt(document.getElementById('quantity').value) || 1;
+            const extra = parseFloat(document.getElementById('extra-cost').value) || 0;
+            const extraDesc = document.getElementById('extra-desc').value.trim();
+            const discPct = parseFloat(document.getElementById('discount-pct').value) || 0;
+            const taxPct = parseFloat(document.getElementById('tax-pct').value) || 0;
+
+            const wMeters = currentUnit === 'cm' ? w / 100 : w;
+            const hMeters = currentUnit === 'cm' ? h / 100 : h;
+
+            const unitArea = wMeters * hMeters;
+            const totalArea = unitArea * qty;
+            const subtotal = totalArea * priceM2;
+
+            const baseWithExtra = subtotal + extra;
+            const discountAmount = baseWithExtra * (discPct / 100);
+            const afterDiscount = baseWithExtra - discountAmount;
+            const taxAmount = afterDiscount * (taxPct / 100);
+            const finalTotal = afterDiscount + taxAmount;
+
+            document.getElementById('res-unit-area').textContent = unitArea.toFixed(2);
+            document.getElementById('res-qty').textContent = qty;
+            document.getElementById('res-total-area').textContent = totalArea.toFixed(2);
+            document.getElementById('res-subtotal').textContent = subtotal.toFixed(2);
+            document.getElementById('res-total').textContent = finalTotal.toFixed(2);
+
+            const adjBox = document.getElementById('res-adjustments');
+            const rowExtra = document.getElementById('row-extra');
+            const rowDisc = document.getElementById('row-discount');
+            const rowTax = document.getElementById('row-tax');
+
+            let hasAdj = false;
+
+            if (extra > 0) {
+                rowExtra.classList.remove('hidden');
+                document.getElementById('res-extra').textContent = extra.toFixed(2);
+                document.getElementById('lbl-extra-desc').textContent = extraDesc ? `(${extraDesc})` : '';
+                hasAdj = true;
+            } else {
+                rowExtra.classList.add('hidden');
+            }
+
+            if (discPct > 0) {
+                rowDisc.classList.remove('hidden');
+                document.getElementById('lbl-disc-pct').textContent = discPct;
+                document.getElementById('res-discount').textContent = discountAmount.toFixed(2);
+                hasAdj = true;
+            } else {
+                rowDisc.classList.add('hidden');
+            }
+
+            if (taxPct > 0) {
+                rowTax.classList.remove('hidden');
+                document.getElementById('lbl-tax-pct').textContent = taxPct;
+                document.getElementById('res-tax').textContent = taxAmount.toFixed(2);
+                hasAdj = true;
+            } else {
+                rowTax.classList.add('hidden');
+            }
+
+            if (hasAdj) adjBox.classList.remove('hidden');
+            else adjBox.classList.add('hidden');
+
+            return {
+                w, h, unit: currentUnit, unitArea, totalArea, priceM2, qty,
+                subtotal, extra, extraDesc, discPct, discountAmount, taxPct, taxAmount, finalTotal
+            };
+        };
+
+        // Guardar o actualizar presupuesto en Firestore
+        window.saveQuote = async function() {
+            if (!currentUser || !db) {
+                showToast('Debes iniciar sesión para guardar en la nube', 'error');
+                return;
+            }
+
+            const clientName = document.getElementById('client-name').value.trim();
+            const clientPhone = document.getElementById('client-phone').value.trim();
+            const workDesc = document.getElementById('work-desc').value.trim();
+            const workNotes = document.getElementById('work-notes').value.trim();
+            const status = document.getElementById('quote-status').value;
+            const existingId = document.getElementById('quote-id').value;
+
+            if (!clientName || !clientPhone || !workDesc) {
+                showToast('Completa el nombre, teléfono y descripción', 'error');
+                return;
+            }
+
+            const calc = calculate();
+            if (calc.totalArea <= 0) {
+                showToast('Ingresa medidas válidas mayores a 0', 'error');
+                return;
+            }
+
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+            setSyncStatus('syncing', 'Guardando...');
+
+            const quoteData = {
+                date: existingId ? (quotes.find(q => q.id === existingId)?.date || dateStr) : dateStr,
+                createdAtMs: existingId ? (quotes.find(q => q.id === existingId)?.createdAtMs || Date.now()) : Date.now(),
+                updatedAt: serverTimestamp(),
+                clientName,
+                clientPhone,
+                workDesc,
+                workNotes,
+                status,
+                ...calc
+            };
+
+            try {
+                if (existingId) {
+                    const docRef = doc(db, 'users', currentUser.uid, 'presupuestos', existingId);
+                    await updateDoc(docRef, quoteData);
+                    showToast('Presupuesto actualizado en todos tus dispositivos');
+                } else {
+                    const colRef = collection(db, 'users', currentUser.uid, 'presupuestos');
+                    const createdRef = await addDoc(colRef, quoteData);
+                    document.getElementById('quote-id').value = createdRef.id;
+                    document.getElementById('editing-badge').classList.remove('hidden');
+                    document.getElementById('btn-save-text').textContent = 'Actualizar';
+                    showToast('Presupuesto guardado y sincronizado');
+                }
+            } catch (error) {
+                console.error('Error guardando en Firestore:', error);
+                setSyncStatus('offline', 'Error al guardar');
+                showToast('No se pudo guardar: ' + error.message, 'error');
+            }
+        };
+
+        // Limpiar formulario para nuevo presupuesto
+        window.resetForm = function() {
+            document.getElementById('quote-form').reset();
+            document.getElementById('quote-id').value = '';
+            document.getElementById('quantity').value = 1;
+            document.getElementById('form-title').textContent = 'Nuevo Presupuesto';
+            document.getElementById('editing-badge').classList.add('hidden');
+            document.getElementById('btn-save-text').textContent = 'Guardar';
+            setUnit('cm');
+            calculate();
+            showToast('Formulario listo para nuevo cálculo');
+        };
+
+        // Cargar un presupuesto guardado en el formulario para editarlo
+        window.loadQuote = function(id) {
+            const q = quotes.find(item => item.id === id);
+            if (!q) return;
+
+            document.getElementById('quote-id').value = q.id;
+            document.getElementById('client-name').value = q.clientName;
+            document.getElementById('client-phone').value = q.clientPhone;
+            document.getElementById('work-desc').value = q.workDesc;
+            document.getElementById('work-notes').value = q.workNotes || '';
+            document.getElementById('width').value = q.w;
+            document.getElementById('height').value = q.h;
+            document.getElementById('price-m2').value = q.priceM2;
+            document.getElementById('quantity').value = q.qty;
+            document.getElementById('extra-cost').value = q.extra || '';
+            document.getElementById('extra-desc').value = q.extraDesc || '';
+            document.getElementById('discount-pct').value = q.discPct || '';
+            document.getElementById('tax-pct').value = q.taxPct || '';
+            document.getElementById('quote-status').value = q.status;
+
+            setUnit(q.unit || 'cm');
+            calculate();
+
+            document.getElementById('form-title').textContent = 'Editando Presupuesto';
+            document.getElementById('editing-badge').classList.remove('hidden');
+            document.getElementById('btn-save-text').textContent = 'Actualizar';
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showToast(`Cargado presupuesto de ${q.clientName}`);
+        };
+
+        // Cambiar estado rápido en Firestore
+        window.cycleStatus = async function(id) {
+            if (!currentUser || !db) return;
+            const statuses = ['Pendiente', 'Aprobado', 'Pagado'];
+            const q = quotes.find(item => item.id === id);
+            if (!q) return;
+
+            const currentIdx = statuses.indexOf(q.status);
+            const nextStatus = statuses[(currentIdx + 1) % statuses.length];
+
+            try {
+                const docRef = doc(db, 'users', currentUser.uid, 'presupuestos', id);
+                await updateDoc(docRef, { status: nextStatus, updatedAt: serverTimestamp() });
+                showToast(`Estado actualizado a ${nextStatus}`);
+            } catch (error) {
+                showToast('Error cambiando estado: ' + error.message, 'error');
+            }
+        };
+
+        // Filtrar historial por estado
+        window.setFilterStatus = function(status) {
+            currentFilter = status;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.className = 'filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+            });
+            const activeBtn = document.getElementById(`filter-${status}`);
+            if (activeBtn) {
+                activeBtn.className = 'filter-btn px-3 py-1.5 rounded-lg font-medium bg-slate-800 text-white transition';
+            }
+            renderQuotes();
+        };
+
+        // Renderizar lista de presupuestos guardados
+        window.renderQuotes = function() {
+            const listEl = document.getElementById('quotes-list');
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const sym = businessConfig.currency || '$';
+
+            const filtered = quotes.filter(q => {
+                const matchesSearch = (q.clientName || '').toLowerCase().includes(searchTerm) ||
+                                      (q.clientPhone || '').toLowerCase().includes(searchTerm) ||
+                                      (q.workDesc || '').toLowerCase().includes(searchTerm);
+                const matchesStatus = currentFilter === 'Todos' || q.status === currentFilter;
+                return matchesSearch && matchesStatus;
+            });
+
+            document.getElementById('quotes-count').textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-10 px-4 border-2 border-dashed border-slate-200 rounded-xl">
+                        <i data-lucide="clipboard-list" class="w-10 h-10 text-slate-300 mx-auto mb-2"></i>
+                        <p class="text-sm font-medium text-slate-500">No hay presupuestos que mostrar</p>
+                        <p class="text-xs text-slate-400 mt-1">Calcula un trabajo y presiona "Guardar" para sincronizarlo en tus dispositivos.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(q => {
+                const badgeColors = {
+                    'Pendiente': 'bg-amber-100 text-amber-800 border-amber-200',
+                    'Aprobado': 'bg-blue-100 text-blue-800 border-blue-200',
+                    'Pagado': 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                };
+                const badgeClass = badgeColors[q.status] || badgeColors['Pendiente'];
+
+                return `
+                    <div class="border border-slate-200 rounded-xl p-4 hover:border-blue-300 transition bg-white shadow-sm group">
+                        <div class="flex justify-between items-start gap-2">
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <h4 class="font-bold text-slate-800 text-sm">${escapeHtml(q.clientName)}</h4>
+                                    <button onclick="cycleStatus('${q.id}')" title="Clic para cambiar estado"
+                                        class="text-[11px] font-semibold px-2 py-0.5 rounded-full border ${badgeClass} cursor-pointer hover:opacity-80 transition">
+                                        ${q.status}
+                                    </button>
+                                </div>
+                                <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                    <i data-lucide="phone" class="w-3 h-3"></i> ${escapeHtml(q.clientPhone)} • <span>${q.date}</span>
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-base font-extrabold text-slate-900">${escapeHtml(sym)}${Number(q.finalTotal).toFixed(2)}</span>
+                                <span class="block text-[11px] font-medium text-blue-600">${Number(q.totalArea).toFixed(2)} m²</span>
+                            </div>
+                        </div>
+
+                        <div class="text-xs text-slate-600 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <span class="font-semibold">${q.qty}x</span> ${escapeHtml(q.workDesc)} 
+                            <span class="text-slate-400">(${q.w}×${q.h} ${q.unit})</span>
+                            ${q.workNotes ? `<p class="text-[11px] text-slate-500 italic mt-1">Nota: ${escapeHtml(q.workNotes)}</p>` : ''}
+                        </div>
+
+                        <!-- Botones de acción de cada tarjeta -->
+                        <div class="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="loadQuote('${q.id}')" class="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition text-xs font-medium flex items-center gap-1" title="Editar / Cargar">
+                                    <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Editar
+                                </button>
+                                <button onclick="copyQuoteText('${q.id}')" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition text-xs font-medium flex items-center gap-1" title="Copiar resumen">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar
+                                </button>
+                                <button onclick="printSavedQuote('${q.id}')" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition text-xs font-medium flex items-center gap-1" title="Imprimir">
+                                    <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button onclick="sendSavedWhatsApp('${q.id}')" class="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg transition text-xs font-semibold flex items-center gap-1">
+                                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i> Enviar
+                                </button>
+                                <button onclick="askDeleteQuote('${q.id}')" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Eliminar">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        };
+
+        // Generar texto formateado del presupuesto
+        function formatQuoteMessage(data) {
+            const sym = businessConfig.currency || '$';
+            let msg = `*PRESUPUESTO - ${businessConfig.name.toUpperCase()}*\n`;
+            msg += `?? *Cliente:* ${data.clientName}\n`;
+            msg += `??? *Trabajo:* ${data.workDesc}\n`;
+            if (data.workNotes) {
+                msg += `?? *Detalles:* ${data.workNotes}\n`;
+            }
+            msg += `?? *Medidas:* ${data.w} x ${data.h} ${data.unit} (${data.qty} und)\n`;
+            msg += `?? *Área Total:* ${Number(data.totalArea).toFixed(2)} m²\n`;
+            msg += `?? *Precio m²:* ${sym}${Number(data.priceM2).toFixed(2)}\n`;
+            
+            if (data.extra > 0) {
+                msg += `? *Adicional ${data.extraDesc ? '('+data.extraDesc+')' : ''}:* ${sym}${Number(data.extra).toFixed(2)}\n`;
+            }
+            if (data.discPct > 0) {
+                msg += `??? *Descuento (${data.discPct}%):* -${sym}${Number(data.discountAmount).toFixed(2)}\n`;
+            }
+            if (data.taxPct > 0) {
+                msg += `??? *Impuesto (${data.taxPct}%):* +${sym}${Number(data.taxAmount).toFixed(2)}\n`;
+            }
+            msg += `\n?? *TOTAL A PAGAR: ${sym}${Number(data.finalTotal).toFixed(2)}*\n`;
+            if (businessConfig.note) {
+                msg += `\n_${businessConfig.note}_`;
+            }
+            return msg;
+        }
+
+        window.sendCurrentWhatsApp = function() {
+            const clientName = document.getElementById('client-name').value.trim() || 'Cliente';
+            const clientPhone = document.getElementById('client-phone').value.trim();
+            const workDesc = document.getElementById('work-desc').value.trim() || 'Trabajo a medida';
+            const workNotes = document.getElementById('work-notes').value.trim();
+            const calc = calculate();
+
+            if (calc.totalArea <= 0) {
+                showToast('Calcula un área válida antes de enviar', 'error');
+                return;
+            }
+
+            const data = { clientName, clientPhone, workDesc, workNotes, ...calc };
+            openWhatsAppUrl(clientPhone, formatQuoteMessage(data));
+        };
+
+        window.sendSavedWhatsApp = function(id) {
+            const q = quotes.find(item => item.id === id);
+            if (!q) return;
+            openWhatsAppUrl(q.clientPhone, formatQuoteMessage(q));
+        };
+
+        function openWhatsAppUrl(phone, text) {
+            const cleanPhone = (phone || '').replace(/\D/g, '');
+            const encodedText = encodeURIComponent(text);
+            const url = cleanPhone 
+                ? `https://wa.me/${cleanPhone}?text=${encodedText}`
+                : `https://wa.me/?text=${encodedText}`;
+            window.open(url, '_blank');
+        }
+
+        window.copyQuoteText = function(id) {
+            const q = quotes.find(item => item.id === id);
+            if (!q) return;
+            const text = formatQuoteMessage(q);
+
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast('Resumen copiado al portapapeles');
+            } catch (err) {
+                showToast('No se pudo copiar el texto', 'error');
+            }
+            document.body.removeChild(textarea);
+        };
+
+        window.preparePrintCurrent = function() {
+            const clientName = document.getElementById('client-name').value.trim() || 'Cliente General';
+            const clientPhone = document.getElementById('client-phone').value.trim() || 'No especificado';
+            const workDesc = document.getElementById('work-desc').value.trim() || 'Servicio / Material por m²';
+            const workNotes = document.getElementById('work-notes').value.trim();
+            const status = document.getElementById('quote-status').value;
+            const calc = calculate();
+            const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+
+            executePrint({ clientName, clientPhone, workDesc, workNotes, status, date: dateStr, ...calc });
+        };
+
+        window.printSavedQuote = function(id) {
+            const q = quotes.find(item => item.id === id);
+            if (!q) return;
+            executePrint(q);
+        };
+
+        function executePrint(data) {
+            const sym = businessConfig.currency || '$';
+            document.getElementById('print-biz-name').textContent = businessConfig.name || 'PRESUPUESTO';
+            document.getElementById('print-biz-phone').textContent = businessConfig.phone ? `Tel: ${businessConfig.phone}` : '';
+            document.getElementById('print-date').textContent = `Fecha: ${data.date}`;
+            document.getElementById('print-status').textContent = `Estado: ${data.status}`;
+            document.getElementById('print-client-name').textContent = data.clientName;
+            document.getElementById('print-client-phone').textContent = `Teléfono: ${data.clientPhone}`;
+
+            document.getElementById('print-desc').textContent = data.workDesc;
+            document.getElementById('print-notes').textContent = data.workNotes ? `Notas: ${data.workNotes}` : '';
+            document.getElementById('print-qty').textContent = `Cantidad: ${data.qty} unidad(es)`;
+            document.getElementById('print-dims').textContent = `${data.w} × ${data.h} ${data.unit}`;
+            document.getElementById('print-area-cell').textContent = `${Number(data.totalArea).toFixed(2)} m²`;
+            document.getElementById('print-price-m2').textContent = `${sym}${Number(data.priceM2).toFixed(2)}`;
+            document.getElementById('print-subtotal').textContent = `${sym}${Number(data.subtotal).toFixed(2)}`;
+
+            const extraRow = document.getElementById('print-extra-row');
+            if (data.extra > 0) {
+                extraRow.classList.remove('hidden');
+                document.getElementById('print-extra-label').textContent = data.extraDesc ? `Extra (${data.extraDesc}):` : 'Costo adicional:';
+                document.getElementById('print-extra-val').textContent = `+${sym}${Number(data.extra).toFixed(2)}`;
+            } else extraRow.classList.add('hidden');
+
+            const discRow = document.getElementById('print-disc-row');
+            if (data.discPct > 0) {
+                discRow.classList.remove('hidden');
+                document.getElementById('print-disc-label').textContent = `Descuento (${data.discPct}%):`;
+                document.getElementById('print-disc-val').textContent = `-${sym}${Number(data.discountAmount).toFixed(2)}`;
+            } else discRow.classList.add('hidden');
+
+            const taxRow = document.getElementById('print-tax-row');
+            if (data.taxPct > 0) {
+                taxRow.classList.remove('hidden');
+                document.getElementById('print-tax-label').textContent = `Impuesto (${data.taxPct}%):`;
+                document.getElementById('print-tax-val').textContent = `+${sym}${Number(data.taxAmount).toFixed(2)}`;
+            } else taxRow.classList.add('hidden');
+
+            document.getElementById('print-total').textContent = `${sym}${Number(data.finalTotal).toFixed(2)}`;
+            document.getElementById('print-footer-note').textContent = businessConfig.note || 'Gracias por su preferencia.';
+
+            const printArea = document.getElementById('print-area');
+            printArea.classList.remove('hidden');
+            window.print();
+            printArea.classList.add('hidden');
+        }
+
+        // Modal de eliminación en Firestore
+        window.askDeleteQuote = function(id) {
+            quoteToDeleteId = id;
+            document.getElementById('delete-modal').classList.remove('hidden');
+            document.getElementById('confirm-delete-btn').onclick = async () => {
+                if (!currentUser || !db || !quoteToDeleteId) return;
+                try {
+                    const docRef = doc(db, 'users', currentUser.uid, 'presupuestos', quoteToDeleteId);
+                    await deleteDoc(docRef);
+                    if (document.getElementById('quote-id').value === quoteToDeleteId) {
+                        resetForm();
+                    }
+                    closeDeleteModal();
+                    showToast('Presupuesto eliminado de todos los dispositivos');
+                } catch (error) {
+                    showToast('Error al eliminar: ' + error.message, 'error');
+                }
+            };
+        };
+
+        window.closeDeleteModal = function() {
+            document.getElementById('delete-modal').classList.add('hidden');
+            quoteToDeleteId = null;
+        };
+
+        // Modal de Configuración de Negocio sincronizada en Firestore
+        window.openBusinessConfig = function() {
+            document.getElementById('biz-name').value = businessConfig.name || '';
+            document.getElementById('biz-phone').value = businessConfig.phone || '';
+            document.getElementById('biz-currency').value = businessConfig.currency || '$';
+            document.getElementById('biz-note').value = businessConfig.note || '';
+            document.getElementById('business-modal').classList.remove('hidden');
+        };
+
+        window.closeBusinessConfig = function() {
+            document.getElementById('business-modal').classList.add('hidden');
+        };
+
+        window.saveBusinessConfig = async function() {
+            const newConfig = {
+                name: document.getElementById('biz-name').value.trim() || 'Presupuesto Personalizado',
+                phone: document.getElementById('biz-phone').value.trim(),
+                currency: document.getElementById('biz-currency').value.trim() || '$',
+                note: document.getElementById('biz-note').value.trim()
+            };
+
+            businessConfig = newConfig;
+            updateCurrencyLabels();
+            closeBusinessConfig();
+
+            if (currentUser && db) {
+                try {
+                    const bizRef = doc(db, 'users', currentUser.uid, 'config', 'negocio');
+                    await setDoc(bizRef, newConfig, { merge: true });
+                    showToast('Datos del negocio sincronizados en la nube');
+                } catch (error) {
+                    showToast('Error guardando configuración: ' + error.message, 'error');
+                }
+            } else {
+                showToast('Datos aplicados localmente');
+            }
+        };
+
+        // Sistema de notificaciones Toast
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgColor = type === 'error' ? 'bg-red-600' : 'bg-slate-800';
+            
+            toast.className = `${bgColor} text-white px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 toast-enter`;
+            toast.innerHTML = `
+                <i data-lucide="${type === 'error' ? 'alert-circle' : 'check-circle-2'}" class="w-4 h-4 text-${type === 'error' ? 'white' : 'emerald-400'}"></i>
+                <span>${escapeHtml(message)}</span>
+            `;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
